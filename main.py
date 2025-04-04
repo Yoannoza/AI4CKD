@@ -5,15 +5,16 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
 import json
+import os
 from dotenv import load_dotenv
 load_dotenv()
 
 # Imports LangChain pour Google Chat et prompt personnalisé
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
-from langchain.memory import ConversationBufferMemory
-from langchain.chains import ConversationChain
-from langchain.schema import SystemMessage, HumanMessage, AIMessage
+from langchain_core.prompts import SystemMessagePromptTemplate, ChatPromptTemplate, HumanMessagePromptTemplate
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import MemorySaver
+memory = MemorySaver()
 
 app = FastAPI(title="API Prédiction CKD", version="1.0")
 
@@ -38,17 +39,7 @@ def get_llm():
     return llm
 
 # Création du prompt template avec intégration des derniers résultats
-def get_chatbot_chain(last_prediction=None):
-    system_template = """
-    Tu es un assistant médical spécialisé en néphrologie, conçu pour aider les médecins à interpréter 
-    les résultats de prédiction de maladie rénale chronique (CKD).
-    
-    {last_prediction_info}
-    
-    Réponds aux questions de façon factuelle, précise et concise. 
-    Évite de donner des conseils médicaux définitifs, mais propose des pistes de réflexion basées sur 
-    les meilleures pratiques en néphrologie.
-    """
+def get_chatbot_agent(last_prediction):
     
     # Ajout des derniers résultats de prédiction s'ils existent
     last_prediction_info = ""
@@ -59,23 +50,22 @@ def get_chatbot_chain(last_prediction=None):
         - Recommandation: {last_prediction.get('recommendation', 'Non disponible')}
         - Explication: {last_prediction.get('explanation', 'Non disponible')}
         """
+        
+    prompt = f"""
+    Tu es un assistant médical spécialisé en néphrologie, conçu pour aider les médecins à interpréter 
+    les résultats de prédiction de maladie rénale chronique (CKD).
     
-    system_message_prompt = SystemMessagePromptTemplate.from_template(system_template)
+    {last_prediction_info}
     
-    chat_prompt = ChatPromptTemplate.from_messages([
-        system_message_prompt,
-        HumanMessagePromptTemplate.from_template("{input}")
-    ])
+    Réponds aux questions de façon factuelle, précise et concise. 
+    Évite de donner des conseils médicaux définitifs, mais propose des pistes de réflexion basées sur 
+    les meilleures pratiques en néphrologie.
+    """
     
-    memory = ConversationBufferMemory(return_messages=True)
-    conversation = ConversationChain(
-        llm=get_llm(),
-        prompt=chat_prompt,
-        memory=memory,
-        verbose=True
-    )
+    ckd_agent = create_react_agent(get_llm(), tools=[], prompt=prompt, checkpointer=memory)
+
     
-    return conversation
+    return ckd_agent
 
 # Modèle Pydantic pour les données patient
 class PatientData(BaseModel):
@@ -166,15 +156,15 @@ async def chatbot(chat_message: ChatMessage):
         last_prediction = last_prediction_results.get("derniere_prediction", None)
         
         # Création de la chaîne de conversation avec les derniers résultats
-        conversation = get_chatbot_chain(last_prediction)
+        agent = get_chatbot_agent(last_prediction)
         
         # Génération de la réponse
-        response = conversation.predict(input=chat_message.message)
+        response = agent.invoke({"messages": [{"role": "user", "content": chat_message.message}]}, {"configurable": {"thread_id": str(1)}}, stream_mode="values")
         
         return JSONResponse(
             status_code=200,
             content={
-                "response": response,
+                "response": response["messages"][-1].content,
                 "has_prediction_context": last_prediction is not None
             }
         )
