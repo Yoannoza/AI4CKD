@@ -2,6 +2,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from utils import recommandation, get_feature_explanation
+from .schemas import PatientData
 from typing import Optional, List, Dict, Any
 import uvicorn
 import json
@@ -10,6 +12,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Imports LangChain pour Google Chat et prompt personnalisé
+from langchain_openai import AzureChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import SystemMessagePromptTemplate, ChatPromptTemplate, HumanMessagePromptTemplate
 from langgraph.prebuilt import create_react_agent
@@ -32,9 +35,15 @@ last_prediction_results = {}
 
 # Initialisation du modèle LangChain avec Google Generative AI
 def get_llm():
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
-        google_api_key=os.getenv("GEMINI_API")  # À remplacer par votre clé API
+    # llm = ChatGoogleGenerativeAI(
+    #     model="gemini-2.0-flash",
+    #     google_api_key=os.getenv("GEMINI_API")  # À remplacer par votre clé API
+    # )
+    llm = AzureChatOpenAI(
+        azure_deployment = os.getenv("DEPLOYMENT_NAME"),
+        api_version = os.getenv("API_VERSION"),
+        
+        
     )
     return llm
 
@@ -67,24 +76,8 @@ def get_chatbot_agent(last_prediction):
     
     return ckd_agent
 
-# Modèle Pydantic pour les données patient
-class PatientData(BaseModel):
-    age: int
-    sexe: str  # "Homme" ou "Femme"
-    poids: float
-    taille: float
-    creatinine: float
-    egfr: float
-    proteinurie: Optional[str] = None  # "Faible", "Modérée", "Élevée"
-    albuminurie: Optional[float] = None
-    uree: Optional[float] = None
-    # Ajoutez ici les autres variables (jusqu'à 40-50 champs)
-    hypertension: Optional[bool] = None
-    diabete: Optional[bool] = None
-    cardio: Optional[bool] = None
-    antecedents_familiaux: Optional[bool] = None
-    ains: Optional[bool] = None
-    fumeur: Optional[str] = None  # "Actif", "Ancien", "Jamais"
+
+
 
 # Endpoint de prédiction
 @app.post("/predict")
@@ -108,6 +101,9 @@ async def predict(patient_data: PatientData):
     else:
         stage = "Stade 5"
         recommendation = "Prise en charge urgente requise."
+        
+    # explicability = get_feature_explanation(patient_data, stage)
+    # explication = recommandation(explicability)
 
     # Exemple d'explication générée par le LLM
     explanation = (
@@ -122,6 +118,13 @@ async def predict(patient_data: PatientData):
         "explanation": explanation,
         "patient_data": patient_data.dict()
     }
+    # result = {
+    #     "stage": stage,
+    #     # "recommendation": recommendation,
+    #     # "explanation": explanation,
+    #     "explanation_recommandation": explication,
+    #     "patient_data": patient_data.dict()
+    # }
     
     # On stocke les résultats en utilisant un identifiant unique (on pourrait utiliser un ID patient)
     # Pour cet exemple, on utilise simplement "derniere_prediction"
@@ -134,6 +137,7 @@ async def predict(patient_data: PatientData):
             "stage": stage,
             "recommendation": recommendation,
             "explanation": explanation
+            # "explanation_recommandation": explanation
         }
     )
 
@@ -191,4 +195,4 @@ async def import_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
