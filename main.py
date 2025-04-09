@@ -6,6 +6,8 @@ from typing import Optional, List, Dict, Any
 import uvicorn
 import json
 import os
+import pickle
+import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -29,6 +31,18 @@ app.add_middleware(
 
 # Stockage temporaire des derniers résultats de prédiction (à remplacer par une DB en production)
 last_prediction_results = {}
+
+# Chargement du modèle pkl
+MODEL_PATH = "best_rf.pkl"  # Assurez-vous que ce chemin est correct
+
+def load_model():
+    try:
+        with open(MODEL_PATH, 'rb') as file:
+            model = pickle.load(file)
+        return model
+    except Exception as e:
+        print(f"Erreur lors du chargement du modèle: {str(e)}")
+        return None
 
 # Initialisation du modèle LangChain avec Google Generative AI
 def get_llm():
@@ -63,28 +77,29 @@ def get_chatbot_agent(last_prediction):
     """
     
     ckd_agent = create_react_agent(get_llm(), tools=[], prompt=prompt, checkpointer=memory)
-
     
     return ckd_agent
 
+# Fonction pour traduire le stade numérique en texte et recommandations
+def get_stage_info(stage_num):
+    stage_map = {
+        0: {"name": "CKD 1", "text": "Stade 1", "recommendation": "Surveillance annuelle de la fonction rénale."},
+        1: {"name": "CKD 2", "text": "Stade 2", "recommendation": "Contrôle des facteurs de risque et suivi biannuel."},
+        2: {"name": "CKD 3a", "text": "Stade 3a", "recommendation": "Consultation néphrologique recommandée, suivi trimestriel."},
+        3: {"name": "CKD 3b", "text": "Stade 3b", "recommendation": "Prise en charge néphrologique renforcée."},
+        4: {"name": "CKD 4", "text": "Stade 4", "recommendation": "Préparation potentielle aux thérapies de suppléance."},
+        5: {"name": "CKD 5", "text": "Stade 5", "recommendation": "Traitement de suppléance à envisager rapidement."}
+    }
+    return stage_map.get(stage_num, {"name": "Indéterminé", "text": "Indéterminé", "recommendation": "Consultation néphrologique recommandée."})
+
 # Modèle Pydantic pour les données patient
 class PatientData(BaseModel):
-    age: int
-    sexe: str  # "Homme" ou "Femme"
-    poids: float
-    taille: float
-    creatinine: float
-    egfr: float
-    proteinurie: Optional[str] = None  # "Faible", "Modérée", "Élevée"
-    albuminurie: Optional[float] = None
-    uree: Optional[float] = None
-    # Ajoutez ici les autres variables (jusqu'à 40-50 champs)
-    hypertension: Optional[bool] = None
-    diabete: Optional[bool] = None
-    cardio: Optional[bool] = None
-    antecedents_familiaux: Optional[bool] = None
-    ains: Optional[bool] = None
-    fumeur: Optional[str] = None  # "Actif", "Ancien", "Jamais"
+    Sexe: int  # 0 pour Femme, 1 pour Homme
+    Age: int
+    Creatinine: float  # Créatinine (mg/L)
+    PathologiesVirales: int  # Personnels Médicaux/Pathologies virales (HB, HC, HIV)
+    HTAFamiliale: int  # Personnels Familiaux/HTA
+    Glaucome: int  # Pathologies/Glaucome
 
 # Endpoint de prédiction
 @app.post("/predict")
@@ -92,50 +107,73 @@ async def predict(patient_data: PatientData):
     """
     Reçoit les données patient, exécute la prédiction CKD et génère une explication.
     """
-    # Exemple de logique de prédiction (à adapter à votre modèle)
-    if patient_data.egfr >= 90:
-        stage = "Stade 1"
-        recommendation = "Surveillance classique."
-    elif 60 <= patient_data.egfr < 90:
-        stage = "Stade 2"
-        recommendation = "Surveillance et suivi régulier."
-    elif 30 <= patient_data.egfr < 60:
-        stage = "Stade 3"
-        recommendation = "Consultez un néphrologue dans les prochaines semaines."
-    elif 15 <= patient_data.egfr < 30:
-        stage = "Stade 4"
-        recommendation = "Prise en charge spécialisée recommandée."
-    else:
-        stage = "Stade 5"
-        recommendation = "Prise en charge urgente requise."
-
-    # Exemple d'explication générée par le LLM
-    explanation = (
-        f"Votre patient est classé {stage} en raison d'un egfr de {patient_data.egfr} mL/min/1.73m². "
-        "Les facteurs clés sont une créatinine élevée et une protéinurie modérée."
-    )
+    # Chargement du modèle
+    model = load_model()
+    if not model:
+        raise HTTPException(status_code=500, detail="Erreur lors du chargement du modèle")
     
-    # Stockage des résultats pour utilisation dans le chatbot
-    result = {
-        "stage": stage,
-        "recommendation": recommendation,
-        "explanation": explanation,
-        "patient_data": patient_data.dict()
-    }
+    # Préparation des données pour la prédiction
+    input_data = pd.DataFrame({
+        'Sexe': [patient_data.Sexe],
+        'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [patient_data.PathologiesVirales],
+        'Personnels Familiaux/HTA': [patient_data.HTAFamiliale],
+        'Pathologies/Glaucome': [patient_data.Glaucome],
+        'Age': [patient_data.Age],
+        'Créatinine (mg/L)': [patient_data.Creatinine]
+    })
     
-    # On stocke les résultats en utilisant un identifiant unique (on pourrait utiliser un ID patient)
-    # Pour cet exemple, on utilise simplement "derniere_prediction"
-    global last_prediction_results
-    last_prediction_results["derniere_prediction"] = result
-
-    return JSONResponse(
-        status_code=200,
-        content={
-            "stage": stage,
-            "recommendation": recommendation,
-            "explanation": explanation
+    try:
+        # Prédiction
+        prediction = model.predict(input_data)
+        stage_num = int(prediction[0])
+        
+        # Récupération des informations sur le stade
+        stage_info = get_stage_info(stage_num)
+        
+        # Génération de l'explication
+        explanation = (
+            f"Votre patient est classé au {stage_info['text']} ({stage_info['name']}) de la maladie rénale chronique. "
+            f"Les facteurs clés pris en compte dans cette prédiction sont:\n"
+            f"- Âge: {patient_data.Age} ans\n"
+            f"- Créatinine: {patient_data.Creatinine} mg/L\n"
+            f"- Sexe: {'Homme' if patient_data.Sexe == 1 else 'Femme'}\n"
+            f"- Présence de pathologies virales: {'Oui' if patient_data.PathologiesVirales == 1 else 'Non'}\n"
+            f"- Antécédents familiaux d'HTA: {'Oui' if patient_data.HTAFamiliale == 1 else 'Non'}\n"
+            f"- Glaucome: {'Oui' if patient_data.Glaucome == 1 else 'Non'}"
+        )
+        
+        # Stockage des résultats pour utilisation dans le chatbot
+        result = {
+            "stage": stage_info['text'],
+            "stage_name": stage_info['name'],
+            "recommendation": stage_info['recommendation'],
+            "explanation": explanation,
+            "patient_data": {
+                "Sexe": "Homme" if patient_data.Sexe == 1 else "Femme",
+                "Age": patient_data.Age,
+                "Creatinine": patient_data.Creatinine,
+                "PathologiesVirales": patient_data.PathologiesVirales,
+                "HTAFamiliale": patient_data.HTAFamiliale,
+                "Glaucome": patient_data.Glaucome
+            }
         }
-    )
+        
+        # On stocke les résultats en utilisant un identifiant unique
+        global last_prediction_results
+        last_prediction_results["derniere_prediction"] = result
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "stage": stage_info['text'],
+                "stage_name": stage_info['name'],
+                "stage_num": stage_num,
+                "recommendation": stage_info['recommendation'],
+                "explanation": explanation
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la prédiction: {str(e)}")
 
 @app.get("/")
 async def root():

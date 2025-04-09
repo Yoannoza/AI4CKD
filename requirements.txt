@@ -5,3 +5,5 @@ python-dotenv
 langchain
 langchain_google_genai
 langgraph
+pandas
+scikit-learn
