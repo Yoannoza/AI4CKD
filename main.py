@@ -43,7 +43,7 @@ def load_model():
     except Exception as e:
         print(f"Erreur lors du chargement du modèle: {str(e)}")
         return None
-
+    
 # Initialisation du modèle LangChain avec Google Generative AI
 def get_llm():
     llm = ChatGoogleGenerativeAI(
@@ -108,21 +108,21 @@ async def predict(patient_data: PatientData):
     Reçoit les données patient, exécute la prédiction CKD et génère une explication.
     """
     # Chargement du modèle
-    model = load_model()
-    if not model:
-        raise HTTPException(status_code=500, detail="Erreur lors du chargement du modèle")
-    
-    # Préparation des données pour la prédiction
-    input_data = pd.DataFrame({
-        'Sexe': [patient_data.Sexe],
-        'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [patient_data.PathologiesVirales],
-        'Personnels Familiaux/HTA': [patient_data.HTAFamiliale],
-        'Pathologies/Glaucome': [patient_data.Glaucome],
-        'Age': [patient_data.Age],
-        'Créatinine (mg/L)': [patient_data.Creatinine]
-    })
-    
     try:
+        model = load_model()
+        if model is None:  # Vérifie si le modèle est None, pas une évaluation booléenne
+            raise HTTPException(status_code=500, detail="Erreur lors du chargement du modèle")
+    
+        # Préparation des données pour la prédiction
+        input_data = pd.DataFrame({
+            'Sexe': [patient_data.Sexe],
+            'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [patient_data.PathologiesVirales],
+            'Personnels Familiaux/HTA': [patient_data.HTAFamiliale],
+            'Pathologies/Glaucome': [patient_data.Glaucome],
+            'Age': [patient_data.Age],
+            'Créatinine (mg/L)': [patient_data.Creatinine]
+        })
+        
         # Prédiction
         prediction = model.predict(input_data)
         stage_num = int(prediction[0])
