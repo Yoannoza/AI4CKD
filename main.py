@@ -39,10 +39,12 @@ def load_model():
     try:
         with open(MODEL_PATH, 'rb') as file:
             model = pickle.load(file)
-        return model
+        return                                                                    model
     except Exception as e:
         print(f"Erreur lors du chargement du modèle: {str(e)}")
         return None
+
+
     
 # Initialisation du modèle LangChain avec Google Generative AI
 def get_llm():
@@ -101,6 +103,55 @@ class PatientData(BaseModel):
     HTAFamiliale: int  # Personnels Familiaux/HTA
     Glaucome: int  # Pathologies/Glaucome
 
+
+# Test de validation du modèle
+def test_model_validation():
+    """Vérifie que le modèle chargé possède les méthodes et attributs attendus."""
+    try:
+        # Chargement du modèle
+        model = load_model()
+        
+        if model is None:
+            print("❌ ERREUR: Impossible de charger le modèle")
+            return False
+        
+        # Vérification des méthodes essentielles
+        if not hasattr(model, 'predict'):
+            print("❌ ERREUR: Le modèle n'a pas de méthode 'predict'")
+            return False
+        
+        # Vérification des attributs attendus d'un RandomForest
+        if hasattr(model, 'estimators_'):
+            print("✅ Le modèle possède des estimateurs (RandomForest)")
+        else:
+            print("⚠️ AVERTISSEMENT: Le modèle ne semble pas être un RandomForest")
+        
+        # Test avec des données fictives
+        test_data = pd.DataFrame({
+            'Sexe': [1],
+            'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [0],
+            'Personnels Familiaux/HTA': [0],
+            'Pathologies/Glaucome': [0],
+            'Age': [50],
+            'Créatinine (mg/L)': [10.0]
+        })
+        
+        # Essai de prédiction
+        try:
+            prediction = model.predict(test_data)
+            print(f"✅ Prédiction réussie: {prediction}")
+        except Exception as e:
+            print(f"❌ ERREUR lors de la prédiction: {str(e)}")
+            return False
+        
+        print("✅ Validation du modèle réussie")
+        return True
+    
+    except Exception as e:
+        print(f"❌ ERREUR inattendue: {str(e)}")
+        return False
+    
+    
 # Endpoint de prédiction
 @app.post("/predict")
 async def predict(patient_data: PatientData):
@@ -229,4 +280,6 @@ async def import_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
 
 if __name__ == "__main__":
+    print("=== Test du modèle ===")
+    test_model_validation()
     uvicorn.run(app, host="0.0.0.0", port=8000)
