@@ -1,158 +1,100 @@
-# 🧠 AI4CKD — API de Prédiction Intelligente pour la Maladie Rénale Chronique (CKD)
+# API Prédiction CKD
 
-Bienvenue dans **AI4CKD**, une API RESTful construite avec ❤️ et **FastAPI** pour prédire les stades de la maladie rénale chronique, et discuter intelligemment des résultats via un chatbot LLM alimenté par **Google Gemini**.
+Bienvenue dans le projet **API Prédiction CKD**, développé par l'équipe 1 IA lors du hackathon AI4CKD organisé par l'IFRI. Cette API permet d'estimer le stade de la maladie rénale chronique (CKD) chez un patient en fonction de plusieurs paramètres cliniques.
 
-> 🏆 Ce projet a été conçu par **l’Équipe 1** dans le cadre de l’**hackathon AI4CKD** organisé par l’**IFRI**.
+## Table des matières
 
----
+- [API Prédiction CKD](#api-prédiction-ckd)
+  - [Table des matières](#table-des-matières)
+  - [Description du projet](#description-du-projet)
+  - [Fonctionnalités](#fonctionnalités)
+  - [Installation](#installation)
+  - [Utilisation](#utilisation)
+  - [Livrables](#livrables)
+    - [Code source](#code-source)
+    - [Interface utilisateur](#interface-utilisateur)
+    - [Démonstration et rapport](#démonstration-et-rapport)
+    - [Notebooks et modèles](#notebooks-et-modèles)
+  - [Contribuer](#contribuer)
 
-## 🚀 Fonctionnalités principales
+## Description du projet
 
-- 🔍 **Prédiction automatique du stade CKD** à partir de données patient
-- 🧪 **Prétraitement intelligent** des données (Box-Cox, Yeo-Johnson, Scalers)
-- 🤖 **Chatbot médical contextuel** basé sur les résultats précédents
-- 📎 Support de l'import de fichiers CSV (optionnel)
-- 🧠 Compatible avec LLM (LangChain + Google Generative AI)
+L'API Prédiction CKD est conçue pour fournir une estimation du stade de la maladie rénale chronique chez un patient, basée sur des données cliniques telles que l'âge, le sexe, le niveau de créatinine, et d'autres facteurs de risque. L'API offre également des recommandations personnalisées en fonction du stade prédit.
 
----
+## Fonctionnalités
 
-## 📦 Installation
+- **Prédiction du stade CKD** : Estimation du stade de la maladie rénale chronique à partir des données patient.
+- **Explications détaillées** : Fourniture d'explications sur les facteurs ayant contribué à la prédiction.
+- **Recommandations personnalisées** : Suggestions adaptées au stade de CKD prédit.
+- **Chatbot intégré** : Interaction avec un assistant virtuel pour des informations supplémentaires sur la CKD.
 
-```bash
-git clone https://github.com/Yoannoza/AI4CKD.git
-cd ai4ckd-api
-pip install -r requirements.txt
-```
+## Installation
 
-Crée un fichier `.env` avec ta clé API Gemini :
+1. Clonez le repository :
 
-```
-GEMINI_API=ta_cle_google_api
-```
+   ```bash
+   git clone https://github.com/Yooannoza/AI4CKD.git
+   cd AI4CKD
+   ```
 
-Assure-toi également d’avoir les fichiers suivants dans le répertoire :
-- `best_model.pkl` — modèle entraîné
-- `std_scaler.save` — StandardScaler sauvegardé
-- `rob_scaler.save` — RobustScaler sauvegardé
+2. Créez un environnement virtuel et activez-le :
 
----
+   ```bash
+   python3 -m venv env
+   source env/bin/activate  # Sur Windows, utilisez 'env\Scripts\activate'
+   ```
 
-## 🧪 Démarrer l’API
+3. Installez les dépendances :
 
-```bash
-uvicorn main:app --reload
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-L’interface interactive Swagger est accessible ici :  
-👉 [http://localhost:8000/docs](http://localhost:8000/docs)
+4. Assurez-vous d'avoir un fichier `.env` contenant vos clés API et autres variables d'environnement nécessaires.
 
----
+## Utilisation
 
-## 🧬 Endpoints
+1. Lancez l'API avec Uvicorn :
 
-### `/predict` – POST
+   ```bash
+   uvicorn main:app --reload
+   ```
 
-Prédit le stade CKD d’un patient.
+2. Accédez à l'API à l'adresse `http://127.0.0.1:8000`.
 
-#### Corps attendu (`application/json`)
+3. La documentation interactive est disponible à `http://127.0.0.1:8000/docs`.
 
-```json
-{
-  "Sexe": 1,
-  "Age": 45,
-  "Creatinine": 1.2,
-  "PathologiesVirales": 0,
-  "HTAFamiliale": 1,
-  "Glaucome": 0
-}
-```
+## Livrables
 
-#### Réponse
+### Code source
 
-```json
-{
-  "stage": "Stade 2",
-  "stage_name": "CKD 2",
-  "stage_num": 1,
-  "recommendation": "Contrôle des facteurs de risque et suivi biannuel.",
-  "explanation": "Votre patient est classé au Stade 2..."
-}
-```
+Le code source complet de l'API est disponible dans le repository GitHub associé au projet.
 
----
+### Interface utilisateur
 
-### `/chatbot` – POST
+Une interface web conviviale est disponible à l'adresse suivante :
 
-Discutez avec un chatbot contextuel alimenté par les dernières prédictions.
+[https://ai4ckd.vercel.app/](https://ai4ckd.vercel.app/)
 
-#### Corps attendu
+### Démonstration et rapport
 
-```json
-{
-  "message": "Quel est le risque à ce stade ?"
-}
-```
+Une démonstration fonctionnelle de l'API, accompagnée d'un rapport détaillé, est accessible ici :
 
-#### Réponse
+[https://drive.google.com/drive/folders/1-m5VMgGUGkVoc-7IOIwCf9q6lnZMPIgU?usp=sharing](https://drive.google.com/drive/folders/1-m5VMgGUGkVoc-7IOIwCf9q6lnZMPIgU?usp=sharing)
 
-```json
-{
-  "response": "À ce stade, un suivi régulier est recommandé...",
-  "has_prediction_context": true
-}
-```
+### Notebooks et modèles
 
----
+Les notebooks Jupyter utilisés pour le développement et l'entraînement des modèles, ainsi que les modèles eux-mêmes, sont disponibles à ces liens :
 
-### `/import_csv` – POST
+- Notebook principal : [https://colab.research.google.com/drive/1igvaGyBt5VJDqGIt0hHFYG6godhanpSo?usp=sharing](https://colab.research.google.com/drive/1igvaGyBt5VJDqGIt0hHFYG6godhanpSo?usp=sharing)
+- Modèles sauvegardés : [https://drive.google.com/drive/folders/1A8I4r2L3qcPlC9PB3jSbQXEJMCsnMfHM](https://drive.google.com/drive/folders/1A8I4r2L3qcPlC9PB3jSbQXEJMCsnMfHM)
 
-Upload d’un fichier CSV contenant des données patients.
+## Contribuer
 
----
+Les contributions sont les bienvenues. Pour proposer des améliorations :
 
-## 💡 Design original
-
-Ce projet fusionne **ML**, **LLM**, **explicabilité**, et **UX médicale** :
-
-- ✨ API centrée sur l’**interprétation clinique**
-- 🧠 Agent LLM avec mémoire de session et prompt adaptatif
-- 📊 Pipeline robuste pour les transformations statistiques
-
----
-
-## 🛠️ Tech Stack
-
-- FastAPI
-- Scikit-learn, Pandas, SciPy
-- LangChain + Gemini API (LLM)
-- joblib, uvicorn
-- Dotenv
-
----
-
-## 🧪 Tester le modèle
-
-Un test simple est inclus au lancement pour vérifier le chargement du modèle :
-
-```bash
-python main.py
-```
-
----
-
-## 🤝 Contribuer
-
-Tu veux l'améliorer ? Ajouter une DB ? Multilingue ? Go for it.
-
----
-
-## ⚠️ Avertissement
-
-Cette API est un **outil d’aide à la décision** pour professionnels de santé. Elle **ne remplace pas un avis médical**.
-
----
-
-## 📬 Contact
-
-Made with ❤️ par **l’Équipe 1** 
-📍 Projet développé pour l’hackathon **AI4CKD - IFRI 2025**  
+1. Fork le repository.
+2. Créez une branche pour votre fonctionnalité (`git checkout -b feature/ma-fonctionnalite`).
+3. Committez vos modifications (`git commit -am 'Ajoute une nouvelle fonctionnalité'`).
+4. Poussez la branche (`git push origin feature/ma-fonctionnalite`).
+5. Ouvrez une Pull Request.
