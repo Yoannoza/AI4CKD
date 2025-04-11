@@ -7,6 +7,8 @@ import uvicorn
 import json
 import os
 from joblib import load
+import numpy as np
+from scipy.stats import boxcox, yeojohnson
 import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
@@ -29,11 +31,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Charge les scalers sauvegardés
+std_scaler = load("scalers/std_scaler.save")
+rob_scaler = load("scalers/rob_scaler.save")
+
+def transform_age(age_value):
+    try:
+        if age_value <= 0:
+            raise ValueError("Age doit être strictement positif pour Box-Cox")
+        transformed, _ = boxcox(np.array([age_value, age_value + 0.1]))  # éviter la constance
+        return transformed[0]
+    except Exception as e:
+        print(f"⚠️ Échec Box-Cox sur Age ({age_value}) — retour sans transformation. Erreur : {e}")
+        try:
+            transformed, _ = yeojohnson(np.array([age_value, age_value + 0.1]))
+            return transformed[0]
+        except Exception as e2:
+            raise ValueError(f"❌ Age invalide ({age_value}) : transformation impossible. Erreur : {e2}")
+        
+def transform_creatinine(creat_value):
+    try:
+        if creat_value <= 0:
+            raise ValueError("Créatinine doit être > 0 pour Box-Cox")
+        transformed, _ = boxcox(np.array([creat_value, creat_value + 0.1]))
+        return transformed[0]
+    except Exception as e:
+        print(f"⚠️ Échec Box-Cox sur Créatinine ({creat_value}) — tentative Yeo-Johnson. Erreur : {e}")
+        try:
+            transformed, _ = yeojohnson(np.array([creat_value, creat_value + 0.1]))
+            return transformed[0]
+        except Exception as e2:
+            raise ValueError(f"❌ Créatinine invalide ({creat_value}) : transformation impossible. Erreur : {e2}")
+
 # Stockage temporaire des derniers résultats de prédiction (à remplacer par une DB en production)
 last_prediction_results = {}
 
 # Chargement du modèle pkl
-MODEL_PATH = "best_model.pkl"  # Assurez-vous que ce chemin est correct
+MODEL_PATH = "models/best_model.pkl"  # Assurez-vous que ce chemin est correct
 
 def load_model():
     try:
@@ -153,36 +187,39 @@ def test_model_validation():
         return False
     
     
-# Endpoint de prédiction
 @app.post("/predict")
 async def predict(patient_data: PatientData):
     """
     Reçoit les données patient, exécute la prédiction CKD et génère une explication.
     """
-    # Chargement du modèle
     try:
         model = load_model()
-        if model is None:  # Vérifie si le modèle est None, pas une évaluation booléenne
+        if model is None:
             raise HTTPException(status_code=500, detail="Erreur lors du chargement du modèle")
-    
-        # Préparation des données pour la prédiction
+
+        # Application des transformations
+        transformed_age = transform_age(patient_data.Age)
+        transformed_creatinine = transform_creatinine(patient_data.Creatinine)
+
+        # Création DataFrame
         input_data = pd.DataFrame({
-            'Sexe': [patient_data.Sexe],
-            # 'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [patient_data.PathologiesVirales],
-            # 'Personnels Familiaux/HTA': [patient_data.HTAFamiliale],
-            # 'Pathologies/Glaucome': [patient_data.Glaucome],
-            'Age': [patient_data.Age],
-            'Créatinine (mg/L)': [patient_data.Creatinine]
+            "Sexe": [patient_data.Sexe],
+            "Age": [transformed_age],
+            "Créatinine (mg/L)": [transformed_creatinine],
+            # "PathologiesVirales": [patient_data.PathologiesVirales],
+            # "HTAFamiliale": [patient_data.HTAFamiliale],
+            # "Glaucome": [patient_data.Glaucome]
         })
-        
+
+        # Application des scalers
+        input_data["Age"] = std_scaler.transform(input_data[["Age"]])
+        input_data["Créatinine (mg/L)"] = rob_scaler.transform(input_data[["Créatinine (mg/L)"]])
+
         # Prédiction
         prediction = model.predict(input_data)
         stage_num = int(prediction[0])
-        
-        # Récupération des informations sur le stade
         stage_info = get_stage_info(stage_num)
-        
-        # Génération de l'explication
+
         explanation = (
             f"Votre patient est classé au {stage_info['text']} ({stage_info['name']}) de la maladie rénale chronique. "
             f"Les facteurs clés pris en compte dans cette prédiction sont:\n"
@@ -193,8 +230,7 @@ async def predict(patient_data: PatientData):
             f"- Antécédents familiaux d'HTA: {'Oui' if patient_data.HTAFamiliale == 1 else 'Non'}\n"
             f"- Glaucome: {'Oui' if patient_data.Glaucome == 1 else 'Non'}"
         )
-        
-        # Stockage des résultats pour utilisation dans le chatbot
+
         result = {
             "stage": stage_info['text'],
             "stage_name": stage_info['name'],
@@ -209,8 +245,7 @@ async def predict(patient_data: PatientData):
                 "Glaucome": patient_data.Glaucome
             }
         }
-        
-        # On stocke les résultats en utilisant un identifiant unique
+
         global last_prediction_results
         last_prediction_results["derniere_prediction"] = result
 
@@ -224,9 +259,11 @@ async def predict(patient_data: PatientData):
                 "explanation": explanation
             }
         )
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la prédiction: {str(e)}")
-
+    
+    
 @app.get("/")
 async def root():
     return {"message": "Bienvenue sur l'API AI4CKD. Consultez /docs pour voir les endpoints."}
