@@ -8,6 +8,10 @@ from typing import Optional, List, Dict, Any
 import uvicorn
 import json
 import os
+from joblib import load
+import numpy as np
+from scipy.stats import boxcox, yeojohnson
+import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -30,9 +34,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Charge les scalers sauvegardés
+std_scaler = load("scalers/std_scaler.save")
+rob_scaler = load("scalers/rob_scaler.save")
+
+def transform_age(age_value):
+    try:
+        if age_value <= 0:
+            raise ValueError("Age doit être strictement positif pour Box-Cox")
+        transformed, _ = boxcox(np.array([age_value, age_value + 0.1]))  # éviter la constance
+        return transformed[0]
+    except Exception as e:
+        print(f"⚠️ Échec Box-Cox sur Age ({age_value}) — retour sans transformation. Erreur : {e}")
+        try:
+            transformed, _ = yeojohnson(np.array([age_value, age_value + 0.1]))
+            return transformed[0]
+        except Exception as e2:
+            raise ValueError(f"❌ Age invalide ({age_value}) : transformation impossible. Erreur : {e2}")
+        
+def transform_creatinine(creat_value):
+    try:
+        if creat_value <= 0:
+            raise ValueError("Créatinine doit être > 0 pour Box-Cox")
+        transformed, _ = boxcox(np.array([creat_value, creat_value + 0.1]))
+        return transformed[0]
+    except Exception as e:
+        print(f"⚠️ Échec Box-Cox sur Créatinine ({creat_value}) — tentative Yeo-Johnson. Erreur : {e}")
+        try:
+            transformed, _ = yeojohnson(np.array([creat_value, creat_value + 0.1]))
+            return transformed[0]
+        except Exception as e2:
+            raise ValueError(f"❌ Créatinine invalide ({creat_value}) : transformation impossible. Erreur : {e2}")
+
 # Stockage temporaire des derniers résultats de prédiction (à remplacer par une DB en production)
 last_prediction_results = {}
 
+# Chargement du modèle pkl
+MODEL_PATH = "models/best_model.pkl"  # Assurez-vous que ce chemin est correct
+
+def load_model():
+    try:
+        with open(MODEL_PATH, 'rb') as file:
+            model = load(file)
+        return                                                                    model
+    except Exception as e:
+        print(f"Erreur lors du chargement du modèle: {str(e)}")
+        return None
+
+
+    
 # Initialisation du modèle LangChain avec Google Generative AI
 def get_llm():
     # llm = ChatGoogleGenerativeAI(
@@ -72,75 +122,158 @@ def get_chatbot_agent(last_prediction):
     """
     
     ckd_agent = create_react_agent(get_llm(), tools=[], prompt=prompt, checkpointer=memory)
-
     
     return ckd_agent
 
+# Fonction pour traduire le stade numérique en texte et recommandations
+def get_stage_info(stage_num):
+    stage_map = {
+        0: {"name": "CKD 1", "text": "Stade 1", "recommendation": "Surveillance annuelle de la fonction rénale."},
+        1: {"name": "CKD 2", "text": "Stade 2", "recommendation": "Contrôle des facteurs de risque et suivi biannuel."},
+        2: {"name": "CKD 3a", "text": "Stade 3a", "recommendation": "Consultation néphrologique recommandée, suivi trimestriel."},
+        3: {"name": "CKD 3b", "text": "Stade 3b", "recommendation": "Prise en charge néphrologique renforcée."},
+        4: {"name": "CKD 4", "text": "Stade 4", "recommendation": "Préparation potentielle aux thérapies de suppléance."},
+        5: {"name": "CKD 5", "text": "Stade 5", "recommendation": "Traitement de suppléance à envisager rapidement."}
+    }
+    return stage_map.get(stage_num, {"name": "Indéterminé", "text": "Indéterminé", "recommendation": "Consultation néphrologique recommandée."})
+
+# Modèle Pydantic pour les données patient
+class PatientData(BaseModel):
+    Sexe: int  # 0 pour Femme, 1 pour Homme
+    Age: int
+    Creatinine: float  # Créatinine (mg/L)
+    PathologiesVirales: int  # Personnels Médicaux/Pathologies virales (HB, HC, HIV)
+    HTAFamiliale: int  # Personnels Familiaux/HTA
+    Glaucome: int  # Pathologies/Glaucome
 
 
-
-# Endpoint de prédiction
+# Test de validation du modèle
+def test_model_validation():
+    """Vérifie que le modèle chargé possède les méthodes et attributs attendus."""
+    try:
+        # Chargement du modèle
+        model = load_model()
+        
+        if model is None:
+            print("❌ ERREUR: Impossible de charger le modèle")
+            return False
+        
+        # Vérification des méthodes essentielles
+        if not hasattr(model, 'predict'):
+            print("❌ ERREUR: Le modèle n'a pas de méthode 'predict'")
+            print(f"❌  TYPE: {model}")
+            return False
+        
+        # Vérification des attributs attendus d'un RandomForest
+        if hasattr(model, 'estimators_'):
+            print("✅ Le modèle possède des estimateurs (RandomForest)")
+        else:
+            print("⚠️ AVERTISSEMENT: Le modèle ne semble pas être un RandomForest")
+        
+        # Test avec des données fictives
+        test_data = pd.DataFrame({
+            'Sexe': [1],
+            # 'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [0],
+            # 'Personnels Familiaux/HTA': [0],
+            # 'Pathologies/Glaucome': [0],
+            'Age': [50],
+            'Créatinine (mg/L)': [10.0]
+        })
+        
+        # Essai de prédiction
+        try:
+            prediction = model.predict(test_data)
+            print(f"✅ Prédiction réussie: {prediction}")
+        except Exception as e:
+            print(f"❌ ERREUR lors de la prédiction: {str(e)}")
+            return False
+        
+        print("✅ Validation du modèle réussie")
+        return True
+    
+    except Exception as e:
+        print(f"❌ ERREUR inattendue: {str(e)}")
+        return False
+    
+    
 @app.post("/predict")
 async def predict(patient_data: PatientData):
     """
     Reçoit les données patient, exécute la prédiction CKD et génère une explication.
     """
-    # Exemple de logique de prédiction (à adapter à votre modèle)
-    if patient_data.egfr >= 90:
-        stage = "Stade 1"
-        recommendation = "Surveillance classique."
-    elif 60 <= patient_data.egfr < 90:
-        stage = "Stade 2"
-        recommendation = "Surveillance et suivi régulier."
-    elif 30 <= patient_data.egfr < 60:
-        stage = "Stade 3"
-        recommendation = "Consultez un néphrologue dans les prochaines semaines."
-    elif 15 <= patient_data.egfr < 30:
-        stage = "Stade 4"
-        recommendation = "Prise en charge spécialisée recommandée."
-    else:
-        stage = "Stade 5"
-        recommendation = "Prise en charge urgente requise."
-        
-    # explicability = get_feature_explanation(patient_data, stage)
-    # explication = recommandation(explicability)
 
-    # Exemple d'explication générée par le LLM
-    explanation = (
-        f"Votre patient est classé {stage} en raison d'un egfr de {patient_data.egfr} mL/min/1.73m². "
-        "Les facteurs clés sont une créatinine élevée et une protéinurie modérée."
-    )
-    
-    # Stockage des résultats pour utilisation dans le chatbot
-    result = {
-        "stage": stage,
-        "recommendation": recommendation,
-        "explanation": explanation,
-        "patient_data": patient_data.dict()
-    }
-    # result = {
-    #     "stage": stage,
-    #     # "recommendation": recommendation,
-    #     # "explanation": explanation,
-    #     "explanation_recommandation": explication,
-    #     "patient_data": patient_data.dict()
-    # }
-    
-    # On stocke les résultats en utilisant un identifiant unique (on pourrait utiliser un ID patient)
-    # Pour cet exemple, on utilise simplement "derniere_prediction"
-    global last_prediction_results
-    last_prediction_results["derniere_prediction"] = result
+    try:
+        model = load_model()
+        if model is None:
+            raise HTTPException(status_code=500, detail="Erreur lors du chargement du modèle")
 
-    return JSONResponse(
-        status_code=200,
-        content={
-            "stage": stage,
-            "recommendation": recommendation,
-            "explanation": explanation
-            # "explanation_recommandation": explanation
+        # Application des transformations
+        transformed_age = transform_age(patient_data.Age)
+        transformed_creatinine = transform_creatinine(patient_data.Creatinine)
+
+        # Création DataFrame
+        input_data = pd.DataFrame({
+            "Sexe": [patient_data.Sexe],
+            "Age": [transformed_age],
+            "Créatinine (mg/L)": [transformed_creatinine],
+            # "PathologiesVirales": [patient_data.PathologiesVirales],
+            # "HTAFamiliale": [patient_data.HTAFamiliale],
+            # "Glaucome": [patient_data.Glaucome]
+        })
+
+        # Application des scalers
+        input_data["Age"] = std_scaler.transform(input_data[["Age"]])
+        input_data["Créatinine (mg/L)"] = rob_scaler.transform(input_data[["Créatinine (mg/L)"]])
+
+        # Prédiction
+        prediction = model.predict(input_data)
+        stage_num = int(prediction[0])
+        stage_info = get_stage_info(stage_num)
+
+        explanation = (
+            f"Votre patient est classé au {stage_info['text']} ({stage_info['name']}) de la maladie rénale chronique. "
+            f"Les facteurs clés pris en compte dans cette prédiction sont:\n"
+            f"- Âge: {patient_data.Age} ans\n"
+            f"- Créatinine: {patient_data.Creatinine} mg/L\n"
+            f"- Sexe: {'Homme' if patient_data.Sexe == 1 else 'Femme'}\n"
+            f"- Présence de pathologies virales: {'Oui' if patient_data.PathologiesVirales == 1 else 'Non'}\n"
+            f"- Antécédents familiaux d'HTA: {'Oui' if patient_data.HTAFamiliale == 1 else 'Non'}\n"
+            f"- Glaucome: {'Oui' if patient_data.Glaucome == 1 else 'Non'}"
+        )
+
+        result = {
+            "stage": stage_info['text'],
+            "stage_name": stage_info['name'],
+            "recommendation": stage_info['recommendation'],
+            "explanation": explanation,
+            "patient_data": {
+                "Sexe": "Homme" if patient_data.Sexe == 1 else "Femme",
+                "Age": patient_data.Age,
+                "Creatinine": patient_data.Creatinine,
+                "PathologiesVirales": patient_data.PathologiesVirales,
+                "HTAFamiliale": patient_data.HTAFamiliale,
+                "Glaucome": patient_data.Glaucome
+            }
         }
-    )
 
+        global last_prediction_results
+        last_prediction_results["derniere_prediction"] = result
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "stage": stage_info['text'],
+                "stage_name": stage_info['name'],
+                "stage_num": stage_num,
+                "recommendation": stage_info['recommendation'],
+                "explanation": explanation
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la prédiction: {str(e)}")
+    
+    
 @app.get("/")
 async def root():
     return {"message": "Bienvenue sur l'API AI4CKD. Consultez /docs pour voir les endpoints."}
@@ -195,4 +328,6 @@ async def import_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(e))
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    print("=== Test du modèle ===")
+    test_model_validation()
+    uvicorn.run(app, host="0.0.0.0", port=8000)
