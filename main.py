@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, Any
 import uvicorn
 import json
 import os
-import pickle
+from joblib import load
 import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
@@ -33,12 +33,12 @@ app.add_middleware(
 last_prediction_results = {}
 
 # Chargement du modèle pkl
-MODEL_PATH = "best_rf.pkl"  # Assurez-vous que ce chemin est correct
+MODEL_PATH = "best_model.pkl"  # Assurez-vous que ce chemin est correct
 
 def load_model():
     try:
         with open(MODEL_PATH, 'rb') as file:
-            model = pickle.load(file)
+            model = load(file)
         return                                                                    model
     except Exception as e:
         print(f"Erreur lors du chargement du modèle: {str(e)}")
@@ -118,6 +118,7 @@ def test_model_validation():
         # Vérification des méthodes essentielles
         if not hasattr(model, 'predict'):
             print("❌ ERREUR: Le modèle n'a pas de méthode 'predict'")
+            print(f"❌  TYPE: {model}")
             return False
         
         # Vérification des attributs attendus d'un RandomForest
@@ -129,9 +130,9 @@ def test_model_validation():
         # Test avec des données fictives
         test_data = pd.DataFrame({
             'Sexe': [1],
-            'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [0],
-            'Personnels Familiaux/HTA': [0],
-            'Pathologies/Glaucome': [0],
+            # 'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [0],
+            # 'Personnels Familiaux/HTA': [0],
+            # 'Pathologies/Glaucome': [0],
             'Age': [50],
             'Créatinine (mg/L)': [10.0]
         })
@@ -167,9 +168,9 @@ async def predict(patient_data: PatientData):
         # Préparation des données pour la prédiction
         input_data = pd.DataFrame({
             'Sexe': [patient_data.Sexe],
-            'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [patient_data.PathologiesVirales],
-            'Personnels Familiaux/HTA': [patient_data.HTAFamiliale],
-            'Pathologies/Glaucome': [patient_data.Glaucome],
+            # 'Personnels Médicaux/Pathologies virales (HB, HC, HIV)': [patient_data.PathologiesVirales],
+            # 'Personnels Familiaux/HTA': [patient_data.HTAFamiliale],
+            # 'Pathologies/Glaucome': [patient_data.Glaucome],
             'Age': [patient_data.Age],
             'Créatinine (mg/L)': [patient_data.Creatinine]
         })

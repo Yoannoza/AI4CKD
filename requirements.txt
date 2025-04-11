@@ -10,3 +10,4 @@ scikit-learn
 pytest
 pytest-asyncio
 httpx
+joblib
