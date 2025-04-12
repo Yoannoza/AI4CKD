@@ -55,8 +55,6 @@ async def prediction(patient_data: PatientData):
         stage_num = int(prediction[0])
         stage_info = get_stage_info(stage_num)
         
-        print(prediction)
-
         explanation = (
             f"Votre patient est classé au {stage_info['text']} ({stage_info['name']}) de la maladie rénale chronique. "
             f"Les facteurs clés pris en compte dans cette prédiction sont:\n"
@@ -73,6 +71,8 @@ async def prediction(patient_data: PatientData):
             "Age" : patient_data.Age,
             "Creatine": patient_data.Creatinine
         }, stage_num)
+        
+        print(feature_explanation)
         
         recommendation = recommandation(feature_explanation)
         
