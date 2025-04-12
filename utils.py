@@ -1,5 +1,6 @@
 from schemas import PatientData
 from langchain_openai import AzureChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from dotenv import load_dotenv
 from joblib import load
