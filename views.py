@@ -44,6 +44,7 @@ async def prediction(patient_data: PatientData):
             # "HTAFamiliale": [patient_data.HTAFamiliale],
             # "Glaucome": [patient_data.Glaucome]
         })
+        print(input_data)
 
         # Application des scalers
         input_data["Age"] = std_scaler.transform(input_data[["Age"]])
@@ -53,6 +54,8 @@ async def prediction(patient_data: PatientData):
         prediction = model.predict(input_data)
         stage_num = int(prediction[0])
         stage_info = get_stage_info(stage_num)
+        
+        print(prediction)
 
         explanation = (
             f"Votre patient est classé au {stage_info['text']} ({stage_info['name']}) de la maladie rénale chronique. "
@@ -72,6 +75,8 @@ async def prediction(patient_data: PatientData):
         }, stage_num)
         
         recommendation = recommandation(feature_explanation)
+        
+        print(recommendation)
 
         result = {
             "stage": stage_info['text'],
