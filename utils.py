@@ -1,6 +1,5 @@
 from schemas import PatientData
 from langchain_openai import AzureChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
 import os
 from dotenv import load_dotenv
 from joblib import load
@@ -16,12 +15,11 @@ MODEL_PATH = "models/best_model.pkl"  # Assurez-vous que ce chemin est correct
 
 def get_llm():
     
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
-        google_api_key=os.getenv("GEMINI_API")  # À remplacer par votre clé API
+    llm = AzureChatOpenAI(
+        azure_deployment = os.getenv("DEPLOYMENT_NAME"),
+        api_version = os.getenv("API_VERSION"), 
     )
     return llm
-
 
 def load_model():
     try:
