@@ -12,3 +12,4 @@ pytest-asyncio
 httpx
 joblib
 numpy
+langchain_openai
