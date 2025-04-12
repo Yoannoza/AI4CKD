@@ -15,11 +15,12 @@ MODEL_PATH = "models/best_model.pkl"  # Assurez-vous que ce chemin est correct
 
 def get_llm():
     
-    llm = AzureChatOpenAI(
-        azure_deployment = os.getenv("DEPLOYMENT_NAME"),
-        api_version = os.getenv("API_VERSION"), 
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        google_api_key=os.getenv("GEMINI_API")  # À remplacer par votre clé API
     )
     return llm
+
 
 def load_model():
     try:
