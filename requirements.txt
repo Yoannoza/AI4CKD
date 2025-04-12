@@ -13,3 +13,4 @@ httpx
 joblib
 numpy
 langchain_openai
+shap
