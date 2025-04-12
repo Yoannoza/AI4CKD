@@ -127,31 +127,33 @@ def get_feature_explanation(input_data: dict, prediction) -> dict:
     Returns:
         une dictionnaire qui contient les éléments qui ont impactés la prédiction
     """
-    print(input_data)
-    df_input = pd.DataFrame([input_data])
-    explainer = shap.TreeExplainer(load_model())
-    shap_values = explainer.shap_values(df_input)
-    # On prend la classe prédite
-    predicted_class = prediction
-    shap_contributions = shap_values[0, :, predicted_class]
-    
-    print(shap_contributions)
+    try:
+        print(input_data)
+        df_input = pd.DataFrame([input_data])
+        explainer = shap.TreeExplainer(load_model())
+        shap_values = explainer.shap_values(df_input)
+        # On prend la classe prédite
+        predicted_class = prediction
+        shap_contributions = shap_values[0, :, predicted_class]
+        
+        print(shap_contributions)
 
-    # Retourne les 3 features les plus influentes
-    
-    feature_impact = sorted(
-        zip(df_input.columns, shap_contributions),
-        key=lambda x: abs(x[1]),
-        reverse=True
-    )[:3]
+        # Retourne les 3 features les plus influentes
+        
+        feature_impact = sorted(
+            zip(df_input.columns, shap_contributions),
+            key=lambda x: abs(x[1]),
+            reverse=True
+        )[:3]
 
-    return {
-        "top_features": [
-            {"feature": f, "contribution": float(round(c, 4))}
-            for f, c in feature_impact
-        ]
-    }
-    
+        return {
+            "top_features": [
+                {"feature": f, "contribution": float(round(c, 4))}
+                for f, c in feature_impact
+            ]
+        }
+    except Exception as e:
+        print(e)  
 
 def transform_age(age_value):
     try:
