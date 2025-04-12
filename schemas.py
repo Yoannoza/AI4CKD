@@ -1,20 +1,15 @@
 from pydantic import BaseModel
+from typing import Optional
 
 # Modèle Pydantic pour les données patient
 class PatientData(BaseModel):
-    age: int
-    sexe: str  # "Homme" ou "Femme"
-    poids: float
-    taille: float
-    creatinine: float
-    egfr: float
-    proteinurie: Optional[str] = None  # "Faible", "Modérée", "Élevée"
-    albuminurie: Optional[float] = None
-    uree: Optional[float] = None
-    # Ajoutez ici les autres variables (jusqu'à 40-50 champs)
-    hypertension: Optional[bool] = None
-    diabete: Optional[bool] = None
-    cardio: Optional[bool] = None
-    antecedents_familiaux: Optional[bool] = None
-    ains: Optional[bool] = None
-    fumeur: Optional[str] = None  # "Actif", "Ancien", "Jamais"
+    Sexe: int  # 0 pour Femme, 1 pour Homme
+    Age: int
+    Creatinine: float  # Créatinine (mg/L)
+    PathologiesVirales: int  # Personnels Médicaux/Pathologies virales (HB, HC, HIV)
+    HTAFamiliale: int  # Personnels Familiaux/HTA
+    Glaucome: int  # Pathologies/Glaucome
+
+class ChatMessage(BaseModel):
+    message: str
+    session_id: Optional[str] = "default"  # Identifiant de session pour gérer plusieurs conversations
