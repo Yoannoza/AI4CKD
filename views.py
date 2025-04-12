@@ -108,6 +108,7 @@ async def prediction(patient_data: PatientData):
             }
         )
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=f"Erreur lors de la prédiction: {str(e)}")
 
 
